@@ -10,6 +10,9 @@ namespace AI_2048
     {
         static void Main(string[] args)
         {
+            using (var game = new GamePage())
+            {
+            }
         }
     }
 }
