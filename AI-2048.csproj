@@ -51,6 +51,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="GamePage.cs" />
+    <Compile Include="GameState.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
   <ItemGroup>
