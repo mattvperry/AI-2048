@@ -10,7 +10,28 @@ namespace AI_2048
     {
         static void Main(string[] args)
         {
-            GameState gs = new GameState();
+            int[,] test = 
+            {
+                { 2, 0, 0, 0 },
+                { 4, 0, 2, 2 },
+                { 0, 0, 0, 2 },
+                { 0, 8, 4, 16 },
+            };
+            GameState gs = new GameState(test);
+            Console.WriteLine(gs);
+            Console.WriteLine(gs.EmptyCount);
+            gs = gs.MakeMove(Moves.Left);
+            Console.WriteLine(gs);
+            Console.WriteLine(gs.EmptyCount);
+            gs = gs.MakeMove(Moves.Right);
+            Console.WriteLine(gs);
+            Console.WriteLine(gs.EmptyCount);
+            gs = gs.MakeMove(Moves.Up);
+            Console.WriteLine(gs);
+            Console.WriteLine(gs.EmptyCount);
+            gs = gs.MakeMove(Moves.Down);
+            Console.WriteLine(gs);
+            Console.WriteLine(gs.EmptyCount);
         }
     }
 }

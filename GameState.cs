@@ -28,74 +28,30 @@ namespace AI_2048
     {
         #region Static Data
         /// <summary>
-        /// Maximum value of a 16 bit integer
+        /// Look up table for right moves
         /// </summary>
-        private const int MAX_SHORT = ushort.MaxValue;
+        private static ushort[] RightLookup = new ushort[ushort.MaxValue];
 
         /// <summary>
-        /// Look up table for row data
+        /// Look up table for left moves
         /// </summary>
-        private static RowData[] RowLookup = new RowData[MAX_SHORT];
+        private static ushort[] LeftLookup = new ushort[ushort.MaxValue];
 
         /// <summary>
-        /// Static constructor for populating row lookup data
+        /// Static constructor for populating row move lookup data
         /// </summary>
         static GameState()
         {
             // Iterate over all possible rows
-            for(ushort row = 0; row < MAX_SHORT; ++row)
+            for(ushort row = 0; row < ushort.MaxValue; ++row)
             {
-                // Split row into individual values
-                byte[] line = 
-                {
-                    (byte)((row >> 12) & 0xF),
-                    (byte)((row >> 8) & 0xF),
-                    (byte)((row >> 4) & 0xF),
-                    (byte)(row & 0xF),
-                };
+                ushort revRow = ReverseRow(row);
+                ushort moveResult = MoveRight(row);
+                ushort revMoveResult = ReverseRow(moveResult);
 
-                ushort moveRightResult = MoveRight(line);
-                RowLookup[row] = new RowData()
-                {
-                    Score = ScoreRow(line),
-                    MoveRight = moveRightResult,
-                    MoveLeft = ReverseRow(moveRightResult),
-                };
+                RightLookup[row] = (ushort)(row ^ moveResult);
+                LeftLookup[revRow] = (ushort)(revRow ^ revMoveResult);
             }
-        }
-
-        /// <summary>
-        /// Score the given row based on the following heuristic:
-        /// 
-        /// 10000 Points for every empty space
-        /// 20000 Points if the maximum value in the row is at an end
-        /// 1000 Points for every value that is next to a value of 1 less exponent
-        /// 10000 Points if the row is sorted
-        /// </summary>
-        /// <param name="row">Row to score</param>
-        /// <returns>Heuristic score of the row</returns>
-        private static float ScoreRow(byte[] row)
-        {
-            float score = 0.0f;
-            int maxIndex = 0;
-            for(int i = 0; i < 4; ++i)
-            {
-                // Empty space
-                if (row[i] == 0) score += 10000.0f;
-                // Keep track of maximum
-                if (row[i] > row[maxIndex]) maxIndex = i;
-                if(i > 0)
-                {
-                    // Look for row neighbors that are close to each other
-                    if (row[i] == row[i - 1] + 1 || row[i] == row[i - 1] - 1) score += 1000.0f;
-                }
-            }
-            // Maximum is at an end
-            if (maxIndex == 0 || maxIndex == 3) score += 20000.0f;
-            // Check if values are ordered
-            if (row[0] < row[1] && row[1] < row[2] && row[2] < row[3]) score += 10000.0f;
-            if (row[0] > row[1] && row[1] > row[2] && row[2] > row[3]) score += 10000.0f;
-            return score;
         }
 
         /// <summary>
@@ -103,8 +59,11 @@ namespace AI_2048
         /// </summary>
         /// <param name="row">Row to move</param>
         /// <returns>New row after move</returns>
-        private static ushort MoveRight(byte[] row)
+        private static ushort MoveRight(ushort row)
         {
+            // Split row into individual values before making move
+            byte[] line = SplitRow(row);
+
             // Iterate over row from the right side
             for(int i = 3; i > 0; --i)
             {
@@ -113,30 +72,58 @@ namespace AI_2048
                 int j;
                 for(j = i - 1; j >= 0; --j)
                 {
-                    if (row[j] != 0) break;
+                    if (line[j] != 0) break;
                 }
                 if (j == -1) break;
 
                 // If the rightmost element is zero
-                if(row[i] == 0)
+                if(line[i] == 0)
                 {
                     // Move element at position j to position i
-                    row[i] = row[j];
-                    row[j] = 0;
+                    line[i] = line[j];
+                    line[j] = 0;
                     i++; // Retry this element
                 }
                 // If the rightmost element equals its closest neighbor
                 // and it is not already the maximum value
-                else if(row[i] == row[j] && row[i] != 0xF)
+                else if(line[i] == line[j] && line[i] != 0xF)
                 {
                     // Bump position i up one
-                    row[i]++;
+                    line[i]++;
                     // Remove position j
-                    row[j] = 0;
+                    line[j] = 0;
                 }
             }
 
             // Reconstruct row from parts
+            return PackRow(line);
+        }
+        #endregion
+
+        #region Static Helpers
+        /// <summary>
+        /// Split ushort representation of row into byte array
+        /// </summary>
+        /// <param name="row">Row as ushort</param>
+        /// <returns>Row as byte array</returns>
+        public static byte[] SplitRow(ushort row)
+        {
+            return new byte[]
+            {
+                (byte)((row >> 12) & 0xF),
+                (byte)((row >> 8) & 0xF),
+                (byte)((row >> 4) & 0xF),
+                (byte)(row & 0xF),
+            };
+        }
+
+        /// <summary>
+        /// Combine byte array row into ushort
+        /// </summary>
+        /// <param name="row">Row as byte array</param>
+        /// <returns>Row as ushort</returns>
+        public static ushort PackRow(byte[] row)
+        {
             return (ushort)((row[0] << 12) | (row[1] << 8) | (row[2] << 4) | row[3]);
         }
 
@@ -145,17 +132,259 @@ namespace AI_2048
         /// </summary>
         /// <param name="row">Row to reverse</param>
         /// <returns>Reversed row</returns>
-        private static ushort ReverseRow(ushort row)
+        public static ushort ReverseRow(ushort row)
         {
             return (ushort)((row >> 12) | ((row >> 4) & 0x00F0) | ((row << 4) & 0x0F00) | (row << 12));
+        }
+
+        /// <summary>
+        /// Transpose the board so columns become rows and vice versa
+        ///   0123       048c
+        ///   4567  -->  159d
+        ///   89ab       26ae
+        ///   cdef       37bf
+        /// Bitwise operator magic...
+        /// </summary>
+        /// <param name="board">Original board</param>
+        /// <returns>Transposed board</returns>
+        public static ulong TransposeBoard(ulong board)
+        {
+            ulong a1 = board & 0xF0F00F0FF0F00F0F;
+            ulong a2 = board & 0x0000F0F00000F0F0;
+            ulong a3 = board & 0x0F0F00000F0F0000;
+            ulong a = a1 | (a2 << 12) | (a3 >> 12);
+            ulong b1 = a & 0xFF00FF0000FF00FF;
+            ulong b2 = a & 0x00FF00FF00000000;
+            ulong b3 = a & 0x00000000FF00FF00;
+            return b1 | (b2 >> 24) | (b3 << 24);
+        }
+
+        /// <summary>
+        /// Since we are storing each element as a power of 2, this method
+        /// will convert the element to the actual value in the grid
+        /// </summary>
+        /// <param name="power">Power of 2</param>
+        /// <returns>2 ^ power</returns>
+        public static int RealValue(byte power)
+        {
+            if (power == 0) return 0;
+            return (int)Math.Pow(2.0, (double)power);
+        }
+        #endregion
+
+        #region Constructors
+        /// <summary>
+        /// Constructor which takes a 2d array of a board
+        /// </summary>
+        /// <param name="grid">2d array of board</param>
+        public GameState(int[,] grid)
+        {
+            for (int i = 0; i < 4; ++i)
+            {
+                for (int j = 0; j < 4; ++j)
+                {
+                    board |= (ulong)Math.Log(grid[i,j], 2);
+                    if (i == 3 && j == 3) break;
+                    board <<= 4;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Constructor which takes a 64 bit int representation of a board
+        /// </summary>
+        /// <param name="board">64-bit int board</param>
+        private GameState(ulong board)
+        {
+            this.board = board;
+        }
+        #endregion
+
+        #region Properties
+        /// <summary>
+        /// Representation of the board as a 64-bit int
+        /// </summary>
+        private ulong board = 0;
+
+        /// <summary>
+        /// Overloaded indexer for retrieving grid element
+        /// </summary>
+        /// <param name="x">X pos</param>
+        /// <param name="y">Y pos</param>
+        /// <returns>Element at x, y</returns>
+        public int this[int x, int y]
+        {
+            get
+            {
+                if (x < 0 || x > 3 || y < 0 || y > 3)
+                    throw new IndexOutOfRangeException();
+                int shift = 60 - (4 * (4 * x + y));
+                return RealValue((byte)((this.board >> shift) & 0xF));
+            }
+        }
+
+        /// <summary>
+        /// List generator for all elements on the board
+        /// </summary>
+        public IEnumerable<int> Elements
+        {
+            get
+            {
+                for(int i = 0; i < 16; ++i)
+                    yield return RealValue((byte)((this.board >> (4 * (15 - i))) & 0xF));
+            }
+        }
+
+        /// <summary>
+        /// Returns the number empty elements on the board
+        /// </summary>
+        public int EmptyCount
+        {
+            get
+            {
+                ulong x = this.board | ((this.board >> 2) & 0x3333333333333333);
+                x |= (x >> 1);
+                x = ~x & 0x1111111111111111;
+                // At this point each nibble is:
+                //  0 if the original was non-zero
+                //  1 if the original was zero
+                for(int i = 32; i >=4; i /= 2)
+                {
+                    x += x >> i;
+                }
+                return (int)(x & 0xF);
+            }
+        }
+        #endregion
+
+        #region Public Interface
+        /// <summary>
+        /// Perform the given move on the board
+        /// </summary>
+        /// <param name="move">Move direction</param>
+        /// <returns>Resulting game state</returns>
+        public GameState MakeMove(Moves move)
+        {
+            ulong newBoard;
+            switch(move)
+            {
+                case Moves.Right:
+                    newBoard = MoveRight();
+                    break;
+                case Moves.Left:
+                    newBoard = MoveLeft();
+                    break;
+                case Moves.Up:
+                    newBoard = MoveUp();
+                    break;
+                case Moves.Down:
+                    newBoard = MoveDown();
+                    break;
+                default:
+                    throw new Exception("Unknown move direction");
+            }
+            return new GameState(newBoard);
+        }
+
+        /// <summary>
+        /// Print the current game state
+        /// </summary>
+        /// <returns>String representation of the current board</returns>
+        public override string ToString()
+        {
+            // Find element with longest digit count
+            int maxDigits = (int)Elements.Max(element => { return (double)element.ToString().Length; });
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 4; ++i)
+            {
+                for (int j = 0; j < 4; ++j)
+                {
+                    sb.AppendFormat("{0} ", this[i, j].ToString().PadLeft(maxDigits));
+                }
+                sb.AppendLine();
+            }
+            return sb.ToString();
+        }
+        #endregion
+
+        #region Game Move Helpers
+        /// <summary>
+        /// Execute a right move on the game
+        /// </summary>
+        /// <returns>Resulting game state</returns>
+        private ulong MoveRight()
+        {
+            return Move(this.board, RightLookup);
+        }
+
+        /// <summary>
+        /// Execute a right move on the game
+        /// </summary>
+        /// <returns>Resulting game state</returns>
+        private ulong MoveLeft()
+        {
+            return Move(this.board, LeftLookup);
+        }
+
+        /// <summary>
+        /// Execute a right move on the game
+        /// </summary>
+        /// <returns>Resulting game state</returns>
+        private ulong MoveUp()
+        {
+            ulong tBoard = TransposeBoard(this.board);
+            tBoard = Move(tBoard, LeftLookup);
+            return TransposeBoard(tBoard);
+        }
+
+        /// <summary>
+        /// Execute a right move on the game
+        /// </summary>
+        /// <returns>Resulting game state</returns>
+        private ulong MoveDown()
+        {
+            ulong tBoard = TransposeBoard(this.board);
+            tBoard = Move(tBoard, RightLookup);
+            return TransposeBoard(tBoard);
+        }
+
+        /// <summary>
+        /// Function which will yield each row to a delegate which will return
+        /// that row after a move. This function will apply that move to the board
+        /// </summary>
+        /// <param name="board">Board to start with</param>
+        /// <param name="getMove">Delegate which will transform each row</param>
+        /// <returns>New board after move</returns>
+        private ulong Move(ulong board, ushort[] lookup)
+        {
+            for(int i = 0; i <= 48; i += 16)
+            {
+                // Extract the row from the board and send to transform delegate
+                ushort row = lookup[(ushort)((board >> i) & 0xFFFF)];
+                // Set the row to the result of the transform delegate
+                board ^= ((ulong)row) << i;
+            }
+            return board;
         }
         #endregion
     }
 
     /// <summary>
+    /// Enumeration of possible moves
+    /// </summary>
+    public enum Moves
+    {
+        Up,
+        Down,
+        Left,
+        Right
+    }
+
+    /// <summary>
     /// Small class to hold all data about a row
     /// </summary>
-    public class RowData
+    public class RowMoves
     {
         /// <summary>
         /// Result of moving a row right
@@ -166,10 +395,5 @@ namespace AI_2048
         /// Result of moving a row left
         /// </summary>
         public ushort MoveLeft { get; set; }
-
-        /// <summary>
-        /// The heuristic score of a row
-        /// </summary>
-        public float Score { get; set; }
     }
 }

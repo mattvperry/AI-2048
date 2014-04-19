@@ -131,15 +131,4 @@ namespace AI_2048
         }
         #endregion
     }
-
-    /// <summary>
-    /// Enumeration of possible moves
-    /// </summary>
-    public enum Moves
-    {
-        Up,
-        Down,
-        Left,
-        Right
-    }
 }

@@ -50,6 +50,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="GameAI.cs" />
     <Compile Include="GamePage.cs" />
     <Compile Include="GameState.cs" />
     <Compile Include="Program.cs" />
