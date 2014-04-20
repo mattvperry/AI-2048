@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
+using System.IO;
 using System.Threading.Tasks;
 
 using OpenQA.Selenium;
@@ -26,11 +28,6 @@ namespace AI_2048
         /// Relative path to chromedriver
         /// </summary>
         private static string CHROME_DRIVER_PATH = @"packages\Selenium.WebDriver.ChromeDriver.2.9.0.1\content";
-
-        /// <summary>
-        /// Regular express matching the CSS class of tile elements, used to extract tile information
-        /// </summary>
-        private string TileInfoRegex = @"tile-(\d+) tile-position-(\d)-(\d)";
         #endregion
 
         #region Page Object
@@ -46,16 +43,15 @@ namespace AI_2048
         private IWebElement PageBody { get; set; }
 
         /// <summary>
-        /// Element that contains the game grid
+        /// Selenium web driver JS executor
         /// </summary>
-        [FindsBy(How = How.ClassName, Using = "tile")]
-        private IList<IWebElement> Tiles { get; set; }
-
-        /// <summary>
-        /// Element that contains the current score
-        /// </summary>
-        [FindsBy(How = How.ClassName, Using = "score-container")]
-        private IWebElement Score { get; set; }
+        private IJavaScriptExecutor JavaScript
+        {
+            get
+            {
+                return Driver as IJavaScriptExecutor;
+            }
+        }
         #endregion
 
         #region Public Interface
@@ -68,6 +64,7 @@ namespace AI_2048
             Driver = new ChromeDriver(CHROME_DRIVER_PATH);
             Driver.Navigate().GoToUrl(GAME_SITE_URL);
             PageFactory.InitElements(Driver, this);
+            JSInject();
         }
 
         /// <summary>
@@ -76,23 +73,31 @@ namespace AI_2048
         /// <returns>Current score</returns>
         public int GetScore()
         {
-            return Int32.Parse(Score.Text);
+            return (int)JavaScript.ExecuteScript("return GameManager._instance.score");
         }
 
         /// <summary>
         /// Read the current game state
         /// </summary>
-        public int[,] GetGameState()
+        public long[,] GetGameState()
         {
-            int[,] grid = new int[4, 4];
-            foreach(var tile in Tiles)
+            long[,] grid = new long[4, 4];
+            var cells = (ReadOnlyCollection<object>)JavaScript.ExecuteScript("return GameManager._instance.grid.cells");
+            for (int i = 0; i < 4; ++i)
             {
-                string klass = tile.GetAttribute("class");
-                Match matches = Regex.Match(klass, TileInfoRegex);
-                int value = Int32.Parse(matches.Groups[1].Value);
-                int xpos = Int32.Parse(matches.Groups[2].Value) - 1;
-                int ypos = Int32.Parse(matches.Groups[3].Value) - 1;
-                grid[xpos, ypos] = value;
+                var col = cells[i] as ReadOnlyCollection<object>;
+                for(int j = 0; j < 4; ++j)
+                {
+                    if(col[j] != null)
+                    {
+                        var cell = col[j] as Dictionary<string, object>;
+                        grid[j, i] = (long)cell["value"];
+                    }
+                    else
+                    {
+                        grid[j, i] = 0;
+                    }
+                }
             }
             return grid;
         }
@@ -103,23 +108,7 @@ namespace AI_2048
         /// <param name="key">Key to press</param>
         public void MakeMove(Moves move)
         {
-            string key = "";
-            switch (move)
-            {
-                case Moves.Up:
-                    key = Keys.ArrowUp;
-                    break;
-                case Moves.Down:
-                    key = Keys.ArrowDown;
-                    break;
-                case Moves.Left:
-                    key = Keys.ArrowLeft;
-                    break;
-                case Moves.Right:
-                    key = Keys.ArrowRight;
-                    break;
-            }
-            PageBody.SendKeys(key);
+            JavaScript.ExecuteScript(string.Format("GameManager._instance.move({0})", (int)move));
         }
 
         /// <summary>
@@ -128,6 +117,17 @@ namespace AI_2048
         public void Dispose()
         {
             Driver.Quit();
+        }
+
+        /// <summary>
+        /// Inject some JS code into the browser so we can control the game
+        /// </summary>
+        private void JSInject()
+        {
+            var funcTmp = JavaScript.ExecuteScript("return GameManager.prototype.isGameTerminated.toString();");
+            JavaScript.ExecuteScript("GameManager.prototype.isGameTerminated = function() { GameManager._instance = this; return true; }");
+            PageBody.SendKeys(Keys.ArrowUp);
+            JavaScript.ExecuteScript(string.Format("eval(GameManager.prototype.isGameTerminated = {0})", funcTmp));
         }
         #endregion
     }

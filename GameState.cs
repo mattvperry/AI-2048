@@ -138,6 +138,18 @@ namespace AI_2048
         }
 
         /// <summary>
+        /// Since we are storing each element as a power of 2, this method
+        /// will convert the element to the actual value in the grid
+        /// </summary>
+        /// <param name="power">Power of 2</param>
+        /// <returns>2 ^ power</returns>
+        public static int RealValue(byte power)
+        {
+            if (power == 0) return 0;
+            return (int)Math.Pow(2.0, (double)power);
+        }
+
+        /// <summary>
         /// Transpose the board so columns become rows and vice versa
         ///   0123       048c
         ///   4567  -->  159d
@@ -160,15 +172,20 @@ namespace AI_2048
         }
 
         /// <summary>
-        /// Since we are storing each element as a power of 2, this method
-        /// will convert the element to the actual value in the grid
+        /// Function which will yield each row to a delegate which will return
+        /// that row after a move. This function will apply that move to the board
         /// </summary>
-        /// <param name="power">Power of 2</param>
-        /// <returns>2 ^ power</returns>
-        public static int RealValue(byte power)
+        /// <param name="board">Board to start with</param>
+        /// <param name="getMove">Delegate which will transform each row</param>
+        /// <returns>New board after move</returns>
+        private static ulong Move(ulong board, ushort[] lookup)
         {
-            if (power == 0) return 0;
-            return (int)Math.Pow(2.0, (double)power);
+            for (int i = 0; i <= 48; i += 16)
+            {
+                ushort row = (ushort)((board >> i) & 0xFFFF);
+                board ^= ((ulong)lookup[row]) << i;
+            }
+            return board;
         }
         #endregion
 
@@ -177,13 +194,13 @@ namespace AI_2048
         /// Constructor which takes a 2d array of a board
         /// </summary>
         /// <param name="grid">2d array of board</param>
-        public GameState(int[,] grid)
+        public GameState(long[,] grid)
         {
             for (int i = 0; i < 4; ++i)
             {
                 for (int j = 0; j < 4; ++j)
                 {
-                    board |= (ulong)Math.Log(grid[i,j], 2);
+                    board |= grid[i,j] == 0 ? 0 : (ulong)Math.Log(grid[i,j], 2);
                     if (i == 3 && j == 3) break;
                     board <<= 4;
                 }
@@ -217,7 +234,9 @@ namespace AI_2048
             get
             {
                 if (x < 0 || x > 3 || y < 0 || y > 3)
+                {
                     throw new IndexOutOfRangeException();
+                }
                 int shift = 60 - (4 * (4 * x + y));
                 return RealValue((byte)((this.board >> shift) & 0xF));
             }
@@ -230,8 +249,49 @@ namespace AI_2048
         {
             get
             {
-                for(int i = 0; i < 16; ++i)
+                for (int i = 0; i < 16; ++i)
+                {
                     yield return RealValue((byte)((this.board >> (4 * (15 - i))) & 0xF));
+                }
+            }
+        }
+
+        /// <summary>
+        /// List generator for all rows on the board
+        /// </summary>
+        public IEnumerable<ushort> Rows
+        {
+            get
+            {
+                for (int i = 0; i <= 48; i += 16)
+                {
+                    yield return (ushort)((this.board >> i) & 0xFFFF);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Enumerate all possible random choices on the current board for
+        /// the next new tile
+        /// </summary>
+        public IEnumerable<RandomChoice> PossibleRandomChoices
+        {
+            get
+            {
+                ulong tile = 1;
+                foreach(var element in Elements.Reverse())
+                {
+                    if(element == 0)
+                    {
+                        yield return new RandomChoice()
+                        {
+                            Place2 = new GameState(this.board | tile),
+                            Place4 = new GameState(this.board | (tile << 1))
+                        };
+                    }
+
+                    tile <<= 4;
+                }
             }
         }
 
@@ -248,7 +308,7 @@ namespace AI_2048
                 // At this point each nibble is:
                 //  0 if the original was non-zero
                 //  1 if the original was zero
-                for(int i = 32; i >=4; i /= 2)
+                for(int i = 32; i >= 4; i /= 2)
                 {
                     x += x >> i;
                 }
@@ -287,6 +347,15 @@ namespace AI_2048
         }
 
         /// <summary>
+        /// Return the transposition of this game state
+        /// </summary>
+        /// <returns>Transposed game state</returns>
+        public GameState Transpose()
+        {
+            return new GameState(TransposeBoard(this.board));
+        }
+
+        /// <summary>
         /// Print the current game state
         /// </summary>
         /// <returns>String representation of the current board</returns>
@@ -305,6 +374,59 @@ namespace AI_2048
                 sb.AppendLine();
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Override equals method
+        /// </summary>
+        /// <param name="obj">Object to compare to</param>
+        /// <returns>True of obj and this game state represent the same state</returns>
+        public override bool Equals(object obj)
+        {
+            GameState gs = obj as GameState;
+            if ((object)gs == null) return false;
+            return this == gs;
+        }
+
+        /// <summary>
+        /// Overload equals operator
+        /// </summary>
+        /// <param name="a">Left hand game state</param>
+        /// <param name="b">Right hand game state</param>
+        /// <returns>True if a and b represent the same state</returns>
+        public static bool operator ==(GameState a, GameState b)
+        {
+            if(ReferenceEquals(a, b))
+            {
+                return true;
+            }
+
+            if((object)a == null || (object)b == null)
+            {
+                return false;
+            }
+
+            return a.board == b.board;
+        }
+
+        /// <summary>
+        /// Overload not equals operator
+        /// </summary>
+        /// <param name="a">Left hand game state</param>
+        /// <param name="b">Right hand game state</param>
+        /// <returns>True if a and b represent different states</returns>
+        public static bool operator !=(GameState a, GameState b)
+        {
+            return !(a == b);
+        }
+
+        /// <summary>
+        /// Hash the game state
+        /// </summary>
+        /// <returns>Game State hash</returns>
+        public override int GetHashCode()
+        {
+            return board.GetHashCode();
         }
         #endregion
 
@@ -348,25 +470,6 @@ namespace AI_2048
             tBoard = Move(tBoard, RightLookup);
             return TransposeBoard(tBoard);
         }
-
-        /// <summary>
-        /// Function which will yield each row to a delegate which will return
-        /// that row after a move. This function will apply that move to the board
-        /// </summary>
-        /// <param name="board">Board to start with</param>
-        /// <param name="getMove">Delegate which will transform each row</param>
-        /// <returns>New board after move</returns>
-        private ulong Move(ulong board, ushort[] lookup)
-        {
-            for(int i = 0; i <= 48; i += 16)
-            {
-                // Extract the row from the board and send to transform delegate
-                ushort row = lookup[(ushort)((board >> i) & 0xFFFF)];
-                // Set the row to the result of the transform delegate
-                board ^= ((ulong)row) << i;
-            }
-            return board;
-        }
         #endregion
     }
 
@@ -376,24 +479,24 @@ namespace AI_2048
     public enum Moves
     {
         Up,
+        Right,
         Down,
         Left,
-        Right
     }
 
     /// <summary>
-    /// Small class to hold all data about a row
+    /// Class representing the random choice on placing a new tile
     /// </summary>
-    public class RowMoves
+    public class RandomChoice
     {
         /// <summary>
-        /// Result of moving a row right
+        /// GameState after placing a random 2
         /// </summary>
-        public ushort MoveRight { get; set; }
+        public GameState Place2 { get; set; }
 
         /// <summary>
-        /// Result of moving a row left
+        /// GameState after placing a random 4
         /// </summary>
-        public ushort MoveLeft { get; set; }
+        public GameState Place4 { get; set; }
     }
 }

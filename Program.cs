@@ -10,28 +10,24 @@ namespace AI_2048
     {
         static void Main(string[] args)
         {
-            int[,] test = 
+            long[,] grid = new long[4, 4]
             {
+                { 4, 2, 0, 0 },
+                { 8, 2, 0, 0 },
                 { 2, 0, 0, 0 },
-                { 4, 0, 2, 2 },
-                { 0, 0, 0, 2 },
-                { 0, 8, 4, 16 },
+                { 4, 2, 0, 0 }
             };
-            GameState gs = new GameState(test);
-            Console.WriteLine(gs);
-            Console.WriteLine(gs.EmptyCount);
-            gs = gs.MakeMove(Moves.Left);
-            Console.WriteLine(gs);
-            Console.WriteLine(gs.EmptyCount);
-            gs = gs.MakeMove(Moves.Right);
-            Console.WriteLine(gs);
-            Console.WriteLine(gs.EmptyCount);
-            gs = gs.MakeMove(Moves.Up);
-            Console.WriteLine(gs);
-            Console.WriteLine(gs.EmptyCount);
-            gs = gs.MakeMove(Moves.Down);
-            Console.WriteLine(gs);
-            Console.WriteLine(gs.EmptyCount);
+
+            GameAI ai = new GameAI();
+            using (GamePage page = new GamePage())
+            {
+                while (true)
+                {
+                    GameState gs = new GameState(page.GetGameState());
+                    Moves move = ai.FindBestMove(gs);
+                    page.MakeMove(move);
+                }
+            }
         }
     }
 }
