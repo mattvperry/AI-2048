@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace AI_2048
 {
@@ -50,19 +51,19 @@ namespace AI_2048
             {
                 // Empty space
                 if (line[i] == 0) score += 10000.0f;
-                // Keep track of maximum
-                if (line[i] > line[maxIndex]) maxIndex = i;
                 if(i > 0)
                 {
+                    // Keep track of maximum
+                    if (line[i] > line[maxIndex]) maxIndex = i;
                     // Look for line neighbors that are close to each other
-                    if (line[i] == line[i - 1] + 1 || line[i] == line[i - 1] - 1) score += 1000.0f;
+                    if (Math.Abs(line[i] - line[i - 1]) == 1) score += 1000.0f;
                 }
             }
             // Maximum is at an end
             if (maxIndex == 0 || maxIndex == 3) score += 20000.0f;
             // Check if values are ordered
-            if (line[0] < line[1] && line[1] < line[2] && line[2] < line[3]) score += 10000.0f;
-            if (line[0] > line[1] && line[1] > line[2] && line[2] > line[3]) score += 10000.0f;
+            if ((line[0] < line[1]) && (line[1] < line[2]) && (line[2] < line[3])) score += 10000.0f;
+            if ((line[0] > line[1]) && (line[1] > line[2]) && (line[2] > line[3])) score += 10000.0f;
             return score;
         }
         #endregion
@@ -91,7 +92,7 @@ namespace AI_2048
         /// <param name="probThreshhold">Dont recurse into a node with a probability less than this</param>
         /// <param name="cacheDepth">Maximum depth to cache nodes</param>
         /// <param name="searchDepth">Maximum depth to search to</param>
-        public GameAI(float probThreshold = .00001f, int cacheDepth = 8, int searchDepth = 10)
+        public GameAI(float probThreshold = .0001f, int cacheDepth = 6, int searchDepth = 8)
         {
             this.probThreshold = probThreshold;
             this.cacheDepth = cacheDepth;
@@ -106,6 +107,9 @@ namespace AI_2048
         /// <returns>Next move to make</returns>
         public Moves FindBestMove(GameState gs)
         {
+            Console.WriteLine(gs);
+            Console.WriteLine("Current Score: {0}", ScoreGameState(gs));
+
             /*
             float best = 0.0f;
             Moves bestMove = Moves.Up;
@@ -124,7 +128,7 @@ namespace AI_2048
             */
 
             return AllMoves().AsParallel()
-                .ToDictionary(m => m, m => ScoreToplevelMove(gs, m))
+                .ToDictionary(m => m, m => ScoreTopLevelMove(gs, m))
                 .Aggregate((a, m) => a.Value > m.Value ? a : m).Key;
         }
         #endregion
@@ -149,14 +153,28 @@ namespace AI_2048
         /// <param name="board">Current board state</param>
         /// <param name="move">Move to score</param>
         /// <returns>Score of move on board</returns>
-        private float ScoreToplevelMove(GameState board, Moves move)
+        private float ScoreTopLevelMove(GameState board, Moves move)
         {
             AlgorithmState state = new AlgorithmState();
+            Stopwatch stopwatch = new Stopwatch();
+
+            stopwatch.Start();
+            float score = ScoreTopLevelMove(state, board, move);
+            stopwatch.Stop();
+
+            Console.WriteLine(string.Format("Move {0}: result {1}: eval'd {2} moves ({3} cache hits, {4} cache size) in {5} milliseconds (maxdepth = {6})",
+                move, score, state.MovesEvaled, state.CacheHits, state.TransTable.Count, stopwatch.Elapsed.Milliseconds, state.MaxDepth));
+
+            return score;
+        }
+
+        private float ScoreTopLevelMove(AlgorithmState state, GameState board, Moves move)
+        {
             GameState newBoard = board.MakeMove(move);
             // This move does nothing
             if (newBoard == board)
             {
-                return -1.0f;
+                return 0.0f;
             }
 
             return ScoreRandomNode(state, newBoard, 1.0f) + 1e-6f;
@@ -217,15 +235,7 @@ namespace AI_2048
             {
                 GameState newBoard = board.MakeMove(move);
                 state.MovesEvaled++;
-
-                if (newBoard != board)
-                {
-                    return ScoreRandomNode(state, board, cprob);
-                }
-                else
-                {
-                    return 0.0f;
-                }
+                return newBoard != board ? ScoreRandomNode(state, board, cprob) : 0.0f;
             });
             state.CurrDepth--;
 

@@ -10,14 +10,6 @@ namespace AI_2048
     {
         static void Main(string[] args)
         {
-            long[,] grid = new long[4, 4]
-            {
-                { 4, 2, 0, 0 },
-                { 8, 2, 0, 0 },
-                { 2, 0, 0, 0 },
-                { 4, 2, 0, 0 }
-            };
-
             GameAI ai = new GameAI();
             using (GamePage page = new GamePage())
             {
