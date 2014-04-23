@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -163,7 +164,7 @@ namespace AI_2048
                 return 0.0;
             }
 
-            return ScoreRandomNode(state, newBoard, 1.0) + 1e-6;
+            return ScoreRandomNode(state, newBoard, 0, 1.0) + 1e-6;
         }
 
         /// <summary>
@@ -175,13 +176,13 @@ namespace AI_2048
         /// <param name="board">Current board state</param>
         /// <param name="cprob">Cumulative probability of this node occuring</param>
         /// <returns>Score of a random node at this board state</returns>
-        private double ScoreRandomNode(AlgorithmState state, GameState board, double cprob)
+        private double ScoreRandomNode(AlgorithmState state, GameState board, int depth, double cprob)
         {
             cprob /= board.EmptyCount;
-            double score = board.PossibleRandomChoices.Aggregate(0.0, (acc, choice) =>
+            double score = board.PossibleRandomChoices.AsParallel().Aggregate(0.0, (acc, choice) =>
             {
-                acc += ScoreMoveNode(state, choice.Place2, cprob * 0.9) * 0.9;
-                acc += ScoreMoveNode(state, choice.Place4, cprob * 0.1) * 0.1;
+                acc += ScoreMoveNode(state, choice.Place2, depth, cprob * 0.9) * 0.9;
+                acc += ScoreMoveNode(state, choice.Place4, depth, cprob * 0.1) * 0.1;
                 return acc;
             });
             return score / board.EmptyCount;
@@ -194,36 +195,34 @@ namespace AI_2048
         /// <param name="board">Current board state</param>
         /// <param name="cprob">Cumulative probability of this node occuring</param>
         /// <returns>Score of a move node at this board state</returns>
-        private double ScoreMoveNode(AlgorithmState state, GameState board, double cprob)
+        private double ScoreMoveNode(AlgorithmState state, GameState board, int depth, double cprob)
         {
             // Halt search on the following conditions:
             //  1) Probability of this state is below threshold
             //  2) We have passed the maximum search depth
             //  3) We have already seen this game state and know its score
-            if(cprob < probThreshold || state.CurrDepth >= searchDepth)
+            if(cprob < probThreshold || depth >= searchDepth)
             {
-                if (state.CurrDepth > state.MaxDepth)
-                    state.MaxDepth = state.CurrDepth;
+                if (depth > state.MaxDepth)
+                    state.MaxDepth = depth;
                 return ScoreGameState(board);
             }
 
-            if(state.CurrDepth < cacheDepth && state.TransTable.ContainsKey(board))
+            if(depth < cacheDepth && state.TransTable.ContainsKey(board))
             {
                 state.CacheHits++;
                 return state.TransTable[board];
             }
 
             // Recurse deeper for every possible move
-            state.CurrDepth++;
             double best = AllMoves().Max(move =>
             {
                 GameState newBoard = board.MakeMove(move);
                 state.MovesEvaled++;
-                return newBoard != board ? ScoreRandomNode(state, newBoard, cprob) : 0.0;
+                return newBoard != board ? ScoreRandomNode(state, newBoard, depth + 1, cprob) : 0.0;
             });
-            state.CurrDepth--;
 
-            if(state.CurrDepth < cacheDepth)
+            if(depth < cacheDepth)
             {
                 state.TransTable[board] = best;
             }
@@ -248,17 +247,12 @@ namespace AI_2048
         /// <summary>
         /// Transposition table which matches a gamestate to its score. Basically a cache
         /// </summary>
-        public Dictionary<GameState, double> TransTable = new Dictionary<GameState,double>();
+        public ConcurrentDictionary<GameState, double> TransTable = new ConcurrentDictionary<GameState,double>();
 
         /// <summary>
         /// The maximum depth that the algorithm has reached in any path
         /// </summary>
         public int MaxDepth = 0;
-
-        /// <summary>
-        /// The current depth of the algorithm
-        /// </summary>
-        public int CurrDepth = 0;
 
         /// <summary>
         /// Number of times a state has been found in the trans table
