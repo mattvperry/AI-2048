@@ -17,7 +17,7 @@ namespace AI_2048
         /// <summary>
         /// Look up table for row score data
         /// </summary>
-        private static float[] RowScores = new float[ushort.MaxValue];
+        private static double[] RowScores = new double[ushort.MaxValue];
 
         /// <summary>
         /// Static constructor for populating row score lookup data
@@ -40,30 +40,30 @@ namespace AI_2048
         /// </summary>
         /// <param name="row">Row to score</param>
         /// <returns>Heuristic score of the row</returns>
-        private static float ScoreRow(ushort row)
+        private static double ScoreRow(ushort row)
         {
            // Split row into individual values
             byte[] line = GameState.SplitRow(row);
 
-            float score = 0.0f;
+            double score = 0.0;
             int maxIndex = 0;
             for(int i = 0; i < 4; ++i)
             {
                 // Empty space
-                if (line[i] == 0) score += 10000.0f;
+                if (line[i] == 0) score += 10000.0;
                 if(i > 0)
                 {
                     // Keep track of maximum
                     if (line[i] > line[maxIndex]) maxIndex = i;
                     // Look for line neighbors that are close to each other
-                    if (Math.Abs(line[i] - line[i - 1]) == 1) score += 1000.0f;
+                    if (Math.Abs(line[i] - line[i - 1]) == 1) score += 1000.0;
                 }
             }
             // Maximum is at an end
-            if (maxIndex == 0 || maxIndex == 3) score += 20000.0f;
+            if (maxIndex == 0 || maxIndex == 3) score += 20000.0;
             // Check if values are ordered
-            if ((line[0] < line[1]) && (line[1] < line[2]) && (line[2] < line[3])) score += 10000.0f;
-            if ((line[0] > line[1]) && (line[1] > line[2]) && (line[2] > line[3])) score += 10000.0f;
+            if ((line[0] < line[1]) && (line[1] < line[2]) && (line[2] < line[3])) score += 10000.0;
+            if ((line[0] > line[1]) && (line[1] > line[2]) && (line[2] > line[3])) score += 10000.0;
             return score;
         }
         #endregion
@@ -72,7 +72,7 @@ namespace AI_2048
         /// <summary>
         /// Dont recurse into a node with a probability less than this
         /// </summary>
-        private float probThreshold;
+        private double probThreshold;
 
         /// <summary>
         /// Maximum depth to cache nodes
@@ -92,7 +92,7 @@ namespace AI_2048
         /// <param name="probThreshhold">Dont recurse into a node with a probability less than this</param>
         /// <param name="cacheDepth">Maximum depth to cache nodes</param>
         /// <param name="searchDepth">Maximum depth to search to</param>
-        public GameAI(float probThreshold = .0001f, int cacheDepth = 6, int searchDepth = 8)
+        public GameAI(double probThreshold = .0001, int cacheDepth = 6, int searchDepth = 8)
         {
             this.probThreshold = probThreshold;
             this.cacheDepth = cacheDepth;
@@ -110,26 +110,12 @@ namespace AI_2048
             Console.WriteLine(gs);
             Console.WriteLine("Current Score: {0}", ScoreGameState(gs));
 
-            /*
-            float best = 0.0f;
-            Moves bestMove = Moves.Up;
-
-            foreach(Moves move in AllMoves())
+            var scores = new Dictionary<Moves, double>();
+            Parallel.ForEach(AllMoves(), move =>
             {
-                float result = ScoreToplevelMove(gs, move);
-                if(result > best)
-                {
-                    best = result;
-                    bestMove = move;
-                }
-            }
-
-            return bestMove;
-            */
-
-            return AllMoves().AsParallel()
-                .ToDictionary(m => m, m => ScoreTopLevelMove(gs, m))
-                .Aggregate((a, m) => a.Value > m.Value ? a : m).Key;
+                scores[move] = ScoreTopLevelMove(gs, move);
+            });
+            return scores.Aggregate((acc, score) => score.Value > acc.Value ? score : acc).Key;
         }
         #endregion
 
@@ -139,11 +125,11 @@ namespace AI_2048
         /// </summary>
         /// <param name="gs">Game State</param>
         /// <returns>Score of game state</returns>
-        private float ScoreGameState(GameState gs)
+        private double ScoreGameState(GameState gs)
         {
-            float rowScore = gs.Rows.Sum(row => { return RowScores[row]; });
-            float colScore = gs.Transpose().Rows.Sum(col => { return RowScores[col]; });
-            return rowScore + colScore + 100000.0f;
+            double rowScore = gs.Rows.Sum(row => { return RowScores[row]; });
+            double colScore = gs.Transpose().Rows.Sum(col => { return RowScores[col]; });
+            return rowScore + colScore + 100000.0;
         }
 
         /// <summary>
@@ -153,13 +139,13 @@ namespace AI_2048
         /// <param name="board">Current board state</param>
         /// <param name="move">Move to score</param>
         /// <returns>Score of move on board</returns>
-        private float ScoreTopLevelMove(GameState board, Moves move)
+        private double ScoreTopLevelMove(GameState board, Moves move)
         {
             AlgorithmState state = new AlgorithmState();
             Stopwatch stopwatch = new Stopwatch();
 
             stopwatch.Start();
-            float score = ScoreTopLevelMove(state, board, move);
+            double score = ScoreTopLevelMove(state, board, move);
             stopwatch.Stop();
 
             Console.WriteLine(string.Format("Move {0}: result {1}: eval'd {2} moves ({3} cache hits, {4} cache size) in {5} milliseconds (maxdepth = {6})",
@@ -168,16 +154,16 @@ namespace AI_2048
             return score;
         }
 
-        private float ScoreTopLevelMove(AlgorithmState state, GameState board, Moves move)
+        private double ScoreTopLevelMove(AlgorithmState state, GameState board, Moves move)
         {
             GameState newBoard = board.MakeMove(move);
             // This move does nothing
             if (newBoard == board)
             {
-                return 0.0f;
+                return 0.0;
             }
 
-            return ScoreRandomNode(state, newBoard, 1.0f) + 1e-6f;
+            return ScoreRandomNode(state, newBoard, 1.0) + 1e-6;
         }
 
         /// <summary>
@@ -189,15 +175,13 @@ namespace AI_2048
         /// <param name="board">Current board state</param>
         /// <param name="cprob">Cumulative probability of this node occuring</param>
         /// <returns>Score of a random node at this board state</returns>
-        private float ScoreRandomNode(AlgorithmState state, GameState board, float cprob)
+        private double ScoreRandomNode(AlgorithmState state, GameState board, double cprob)
         {
-            if (board.EmptyCount == 0) return 0.0f;
-
             cprob /= board.EmptyCount;
-            float score = board.PossibleRandomChoices.Aggregate(0.0f, (acc, choice) =>
+            double score = board.PossibleRandomChoices.Aggregate(0.0, (acc, choice) =>
             {
-                acc += ScoreMoveNode(state, choice.Place2, cprob * 0.9f) * 0.9f;
-                acc += ScoreMoveNode(state, choice.Place4, cprob * 0.1f) * 0.1f;
+                acc += ScoreMoveNode(state, choice.Place2, cprob * 0.9) * 0.9;
+                acc += ScoreMoveNode(state, choice.Place4, cprob * 0.1) * 0.1;
                 return acc;
             });
             return score / board.EmptyCount;
@@ -210,7 +194,7 @@ namespace AI_2048
         /// <param name="board">Current board state</param>
         /// <param name="cprob">Cumulative probability of this node occuring</param>
         /// <returns>Score of a move node at this board state</returns>
-        private float ScoreMoveNode(AlgorithmState state, GameState board, float cprob)
+        private double ScoreMoveNode(AlgorithmState state, GameState board, double cprob)
         {
             // Halt search on the following conditions:
             //  1) Probability of this state is below threshold
@@ -231,11 +215,11 @@ namespace AI_2048
 
             // Recurse deeper for every possible move
             state.CurrDepth++;
-            float best = AllMoves().Max(move =>
+            double best = AllMoves().Max(move =>
             {
                 GameState newBoard = board.MakeMove(move);
                 state.MovesEvaled++;
-                return newBoard != board ? ScoreRandomNode(state, board, cprob) : 0.0f;
+                return newBoard != board ? ScoreRandomNode(state, newBoard, cprob) : 0.0;
             });
             state.CurrDepth--;
 
@@ -264,7 +248,7 @@ namespace AI_2048
         /// <summary>
         /// Transposition table which matches a gamestate to its score. Basically a cache
         /// </summary>
-        public Dictionary<GameState, float> TransTable = new Dictionary<GameState,float>();
+        public Dictionary<GameState, double> TransTable = new Dictionary<GameState,double>();
 
         /// <summary>
         /// The maximum depth that the algorithm has reached in any path
