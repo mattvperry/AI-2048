@@ -243,16 +243,24 @@ namespace AI_2048
         }
 
         /// <summary>
+        /// List generator to list all tile values' powers
+        /// </summary>
+        public IEnumerable<byte> TilePowers
+        {
+            get 
+            {
+                return Enumerable.Range(0, 16).Select(i => (byte)((this.board >> (4 * (15 - i))) & 0xF));
+            }
+        }
+
+        /// <summary>
         /// List generator for all elements on the board
         /// </summary>
         public IEnumerable<int> Elements
         {
             get
             {
-                for (int i = 0; i < 16; ++i)
-                {
-                    yield return RealValue((byte)((this.board >> (4 * (15 - i))) & 0xF));
-                }
+                return TilePowers.Select(RealValue);
             }
         }
 
@@ -315,6 +323,32 @@ namespace AI_2048
                 return (int)(x & 0xF);
             }
         }
+
+        /// <summary>
+        /// Returns the number of distinct tile numbers on the board
+        /// </summary>
+        public int DistinctTiles
+        {
+            get
+            {
+                ushort bitset = 0;
+                foreach(var tilePow in TilePowers)
+                {
+                    bitset |= (ushort)(1 << tilePow);
+                }
+
+                // Don't count zeros
+                bitset >>= 1;
+
+                int count = 0;
+                while (bitset != 0)
+                {
+                    bitset &= (ushort)(bitset - 1);
+                    count++;
+                }
+                return count;
+            }
+        }
         #endregion
 
         #region Public Interface
@@ -362,7 +396,7 @@ namespace AI_2048
         public override string ToString()
         {
             // Find element with longest digit count
-            int maxDigits = (int)Elements.Max(element => { return (double)element.ToString().Length; });
+            int maxDigits = (int)Elements.Max(element => (double)element.ToString().Length);
 
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < 4; ++i)

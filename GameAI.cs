@@ -10,6 +10,33 @@ using System.Diagnostics;
 namespace AI_2048
 {
     /// <summary>
+    /// Game AI constants which affect the algorithms efficiency and accuracy
+    /// </summary>
+    public static class GameAIConstants
+    {
+        // Heuristic weight constants
+        public const double SCORE_LOST_PENALTY = 200000.0;
+        public const double SCORE_MONOTONICITY_WEIGHT = -47.0;
+        public const double SCORE_SUM_WEIGHT = -11.0;
+        public const double SCORE_MERGES_WEIGHT = 700.0;
+        public const double SCORE_EMPTY_WEIGHT = 270.0;
+
+        // Heuristic scaling constants
+        public const double SCORE_SUM_POWER = 3.5;
+        public const double SCORE_MONOTONICITY_POWER = 4.0;
+
+        /// <summary>
+        /// Dont recurse into a node with a probability less than this
+        /// </summary>
+        public const double CPROB_THRESHOLD = 0.0001;
+
+        /// <summary>
+        /// Maximum depth to cache nodes
+        /// </summary>
+        public const int CACHE_DEPTH = 6;
+    }
+
+    /// <summary>
     /// AI code to decide which moves to make in the game
     /// </summary>
     public class GameAI
@@ -18,17 +45,14 @@ namespace AI_2048
         /// <summary>
         /// Look up table for row score data
         /// </summary>
-        private static double[] RowScores = new double[ushort.MaxValue];
+        private static double[] RowScores;
 
         /// <summary>
         /// Static constructor for populating row score lookup data
         /// </summary>
         static GameAI()
         {
-            for(ushort row = 0; row < ushort.MaxValue; ++row)
-            {
-                RowScores[row] = ScoreRow(row);
-            }
+            RowScores = Enumerable.Range(0, ushort.MaxValue).Select(r => ScoreRow((ushort)r)).ToArray();
         }
 
         /// <summary>
@@ -46,58 +70,34 @@ namespace AI_2048
            // Split row into individual values
             byte[] line = GameState.SplitRow(row);
 
-            double score = 0.0;
-            int maxIndex = 0;
-            for(int i = 0; i < 4; ++i)
-            {
-                // Empty space
-                if (line[i] == 0) score += 10000.0;
-                if(i > 0)
-                {
-                    // Keep track of maximum
-                    if (line[i] > line[maxIndex]) maxIndex = i;
-                    // Look for line neighbors that are close to each other
-                    if (Math.Abs(line[i] - line[i - 1]) == 1) score += 1000.0;
-                }
-            }
-            // Maximum is at an end
-            if (maxIndex == 0 || maxIndex == 3) score += 20000.0;
-            // Check if values are ordered
-            if ((line[0] < line[1]) && (line[1] < line[2]) && (line[2] < line[3])) score += 10000.0;
-            if ((line[0] > line[1]) && (line[1] > line[2]) && (line[2] > line[3])) score += 10000.0;
-            return score;
-        }
-        #endregion
+            // Count empty tiles
+            int empties = line.Count(rank => rank == 0);
 
-        #region Properties
-        /// <summary>
-        /// Dont recurse into a node with a probability less than this
-        /// </summary>
-        private double probThreshold;
+            // Sum all tile ranks
+            double sum = line.Select(rank => Math.Pow((double)rank, GameAIConstants.SCORE_SUM_POWER)).Sum();
 
-        /// <summary>
-        /// Maximum depth to cache nodes
-        /// </summary>
-        private int cacheDepth;
+            // Calculate monotonicity from left to right and from right to left
+            Func<double, double> monoPower = (x) => Math.Pow(x, GameAIConstants.SCORE_MONOTONICITY_POWER);
+            var monoValues = line.Zip(line.Skip(1), (first, second) => monoPower(first) - monoPower(second));
+            var monoLeft = monoValues.Where(v => v > 0).Sum();
+            var monoRight = monoValues.Where(v => v < 0).Sum() * -1;
+            var monotonicity = Math.Min(monoLeft, monoRight);
 
-        /// <summary>
-        /// Maximum depth to search to
-        /// </summary>
-        private int searchDepth;
-        #endregion
+            // Count available merges
+            var rowValues = line.Where(tile => tile != 0);
+            var equalPairs = rowValues.Zip(rowValues.Skip(1), (first, second) => Tuple.Create(first, second)).Where(t => t.Item1 == t.Item2);
+            var merges = equalPairs.Count() + equalPairs.Distinct().Count();
 
-        #region Constructor
-        /// <summary>
-        /// Makes an instance of a Game AI
-        /// </summary>
-        /// <param name="probThreshhold">Dont recurse into a node with a probability less than this</param>
-        /// <param name="cacheDepth">Maximum depth to cache nodes</param>
-        /// <param name="searchDepth">Maximum depth to search to</param>
-        public GameAI(double probThreshold = .0001, int cacheDepth = 6, int searchDepth = 8)
-        {
-            this.probThreshold = probThreshold;
-            this.cacheDepth = cacheDepth;
-            this.searchDepth = searchDepth;
+            var weights = new List<double> 
+            { 
+                GameAIConstants.SCORE_EMPTY_WEIGHT, 
+                GameAIConstants.SCORE_MERGES_WEIGHT, 
+                GameAIConstants.SCORE_MONOTONICITY_WEIGHT, 
+                GameAIConstants.SCORE_SUM_WEIGHT 
+            };
+            var heuristics = new List<double> { empties, merges, monotonicity, sum };
+
+            return weights.Zip(heuristics, (w, h) => w * h).Sum() + GameAIConstants.SCORE_LOST_PENALTY;
         }
         #endregion
 
@@ -128,9 +128,8 @@ namespace AI_2048
         /// <returns>Score of game state</returns>
         private double ScoreGameState(GameState gs)
         {
-            double rowScore = gs.Rows.Sum(row => { return RowScores[row]; });
-            double colScore = gs.Transpose().Rows.Sum(col => { return RowScores[col]; });
-            return rowScore + colScore + 100000.0;
+            return  gs.Rows.Sum(row => RowScores[row]) +
+                    gs.Transpose().Rows.Sum(col => RowScores[col]);
         }
 
         /// <summary>
@@ -142,29 +141,21 @@ namespace AI_2048
         /// <returns>Score of move on board</returns>
         private double ScoreTopLevelMove(GameState board, Moves move)
         {
-            AlgorithmState state = new AlgorithmState();
+            AlgorithmState state = new AlgorithmState
+            {
+                DepthLimit = Math.Max(3, board.DistinctTiles - 2)
+            };
             Stopwatch stopwatch = new Stopwatch();
 
             stopwatch.Start();
-            double score = ScoreTopLevelMove(state, board, move);
+            GameState newBoard = board.MakeMove(move);
+            double score = newBoard != board ? ScoreRandomNode(state, newBoard, 0, 1.0) : 0.0;
             stopwatch.Stop();
 
-            Console.WriteLine(string.Format("Move {0}: result {1}: eval'd {2} moves ({3} cache hits, {4} cache size) in {5} milliseconds (maxdepth = {6})",
-                move, score, state.MovesEvaled, state.CacheHits, state.TransTable.Count, stopwatch.Elapsed.Milliseconds, state.MaxDepth));
+            Console.WriteLine(string.Format("Move {0}: result {1}: eval'd {2} moves ({3} cache hits, {4} cache size) in {5} milliseconds (maxdepth = {6}, depthlimit = {7})",
+                move, score, state.MovesEvaled, state.CacheHits, state.TransTable.Count, stopwatch.Elapsed.Milliseconds, state.MaxDepth, state.DepthLimit));
 
             return score;
-        }
-
-        private double ScoreTopLevelMove(AlgorithmState state, GameState board, Moves move)
-        {
-            GameState newBoard = board.MakeMove(move);
-            // This move does nothing
-            if (newBoard == board)
-            {
-                return 0.0;
-            }
-
-            return ScoreRandomNode(state, newBoard, 0, 1.0) + 1e-6;
         }
 
         /// <summary>
@@ -178,14 +169,36 @@ namespace AI_2048
         /// <returns>Score of a random node at this board state</returns>
         private double ScoreRandomNode(AlgorithmState state, GameState board, int depth, double cprob)
         {
+            // Halt search on the following conditions:
+            //  1) Probability of this state is below threshold
+            //  2) We have passed the maximum search depth
+            //  3) We have already seen this game state and know its score
+            if(cprob < GameAIConstants.CPROB_THRESHOLD || depth >= state.DepthLimit)
+            {
+                state.MaxDepth = Math.Max(state.MaxDepth, depth);
+                return ScoreGameState(board);
+            }
+
+            if(depth < GameAIConstants.CACHE_DEPTH && state.TransTable.ContainsKey(board))
+            {
+                state.CacheHits++;
+                return state.TransTable[board];
+            }
+
             cprob /= board.EmptyCount;
             double score = board.PossibleRandomChoices.AsParallel().Aggregate(0.0, (acc, choice) =>
             {
                 acc += ScoreMoveNode(state, choice.Place2, depth, cprob * 0.9) * 0.9;
                 acc += ScoreMoveNode(state, choice.Place4, depth, cprob * 0.1) * 0.1;
                 return acc;
-            });
-            return score / board.EmptyCount;
+            }) / board.EmptyCount;
+
+            if(depth < GameAIConstants.CACHE_DEPTH)
+            {
+                state.TransTable[board] = score;
+            }
+
+            return score;
         }
 
         /// <summary>
@@ -197,37 +210,13 @@ namespace AI_2048
         /// <returns>Score of a move node at this board state</returns>
         private double ScoreMoveNode(AlgorithmState state, GameState board, int depth, double cprob)
         {
-            // Halt search on the following conditions:
-            //  1) Probability of this state is below threshold
-            //  2) We have passed the maximum search depth
-            //  3) We have already seen this game state and know its score
-            if(cprob < probThreshold || depth >= searchDepth)
-            {
-                if (depth > state.MaxDepth)
-                    state.MaxDepth = depth;
-                return ScoreGameState(board);
-            }
-
-            if(depth < cacheDepth && state.TransTable.ContainsKey(board))
-            {
-                state.CacheHits++;
-                return state.TransTable[board];
-            }
-
             // Recurse deeper for every possible move
-            double best = AllMoves().Max(move =>
+            return AllMoves().Max(move =>
             {
                 GameState newBoard = board.MakeMove(move);
                 state.MovesEvaled++;
                 return newBoard != board ? ScoreRandomNode(state, newBoard, depth + 1, cprob) : 0.0;
             });
-
-            if(depth < cacheDepth)
-            {
-                state.TransTable[board] = best;
-            }
-
-            return best;
         }
         #endregion
 
@@ -263,5 +252,10 @@ namespace AI_2048
         /// Total number of possible moves evaluated
         /// </summary>
         public int MovesEvaled = 0;
+
+        /// <summary>
+        /// Search depth limit
+        /// </summary>
+        public int DepthLimit = 0;
     }
 }
