@@ -141,19 +141,14 @@ namespace AI_2048
         /// <returns>Score of move on board</returns>
         private double ScoreTopLevelMove(GameState board, Moves move)
         {
-            AlgorithmState state = new AlgorithmState
-            {
-                DepthLimit = Math.Max(3, board.DistinctTiles - 2)
-            };
-            Stopwatch stopwatch = new Stopwatch();
+            AlgorithmState state = new AlgorithmState(board);
 
-            stopwatch.Start();
+            Stopwatch stopwatch = Stopwatch.StartNew();
             GameState newBoard = board.MakeMove(move);
             double score = newBoard != board ? ScoreRandomNode(state, newBoard, 0, 1.0) : 0.0;
             stopwatch.Stop();
 
-            Console.WriteLine(string.Format("Move {0}: result {1}: eval'd {2} moves ({3} cache hits, {4} cache size) in {5} milliseconds (maxdepth = {6}, depthlimit = {7})",
-                move, score, state.MovesEvaled, state.CacheHits, state.TransTable.Count, stopwatch.Elapsed.Milliseconds, state.MaxDepth, state.DepthLimit));
+            PrintStatus(move, score, state, stopwatch.Elapsed);
 
             return score;
         }
@@ -186,7 +181,7 @@ namespace AI_2048
             }
 
             cprob /= board.EmptyCount;
-            double score = board.PossibleRandomChoices.AsParallel().Aggregate(0.0, (acc, choice) =>
+            double score = board.PossibleRandomChoices.Aggregate(0.0, (acc, choice) =>
             {
                 acc += ScoreMoveNode(state, choice.Place2, depth, cprob * 0.9) * 0.9;
                 acc += ScoreMoveNode(state, choice.Place4, depth, cprob * 0.1) * 0.1;
@@ -225,6 +220,21 @@ namespace AI_2048
         {
             return Enum.GetValues(typeof(Moves)).Cast<Moves>();
         }
+
+        private void PrintStatus(Moves move, double score, AlgorithmState state, TimeSpan elapsedTime)
+        {
+            StringBuilder sb = new StringBuilder();
+
+            sb.AppendLine(string.Format("Move {0} evaluated:", move));
+            sb.AppendLine(string.Format("  Move score: {0}", score));
+            sb.AppendLine(string.Format("  Moves evaluated: {0}", state.MovesEvaled));
+            sb.AppendLine(string.Format("  Cache: {0} hits, {1} size", state.CacheHits, state.TransTable.Count));
+            sb.AppendLine(string.Format("  Search: {0} deep, {1} max depth", state.MaxDepth, state.DepthLimit));
+            sb.AppendLine(string.Format("  Time elapsed: {0}", elapsedTime));
+
+            Console.WriteLine(sb);
+            Console.WriteLine();
+        }
         #endregion
     }
 
@@ -233,6 +243,15 @@ namespace AI_2048
     /// </summary>
     public class AlgorithmState
     {
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="board">Starting board</param>
+        public AlgorithmState(GameState board)
+        {
+            DepthLimit = Math.Max(3, board.DistinctTiles - 2);
+        }
+
         /// <summary>
         /// Transposition table which matches a gamestate to its score. Basically a cache
         /// </summary>
