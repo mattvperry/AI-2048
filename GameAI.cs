@@ -181,7 +181,7 @@ namespace AI_2048
             }
 
             cprob /= board.EmptyCount;
-            double score = board.PossibleRandomChoices.Aggregate(0.0, (acc, choice) =>
+            double score = board.PossibleRandomChoices.AsParallel().Aggregate(0.0, (acc, choice) =>
             {
                 acc += ScoreMoveNode(state, choice.Place2, depth, cprob * 0.9) * 0.9;
                 acc += ScoreMoveNode(state, choice.Place4, depth, cprob * 0.1) * 0.1;

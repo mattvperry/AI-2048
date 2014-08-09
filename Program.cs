@@ -18,6 +18,16 @@ namespace AI_2048
                     GameState gs = new GameState(page.GetGameState());
                     Moves move = ai.FindBestMove(gs);
                     page.MakeMove(move);
+
+                    if(page.IsGameOver())
+                    {
+                        Console.WriteLine("Final game score: {0}", page.CurrentScore());
+                        Console.Write("Restart game? [Y/n]: ");
+                        string input = Console.ReadLine().ToLower();
+                        if (input == "n") break;
+
+                        page.RestartGame();
+                    }
                 }
             }
         }

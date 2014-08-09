@@ -59,12 +59,13 @@ namespace AI_2048
         /// Default GamePage Constructor
         /// </summary>
         /// <param name="driver">Web driver to use</param>
-        public GamePage()
+        public GamePage(bool keepPlaying = true)
         {
             Driver = new ChromeDriver(CHROME_DRIVER_PATH);
             Driver.Navigate().GoToUrl(GAME_SITE_URL);
             PageFactory.InitElements(Driver, this);
             JSInject();
+            KeepPlaying(keepPlaying);
         }
 
         /// <summary>
@@ -109,6 +110,41 @@ namespace AI_2048
         public void MakeMove(Moves move)
         {
             JavaScript.ExecuteScript(string.Format("GameManager._instance.move({0})", (int)move));
+        }
+
+        /// <summary>
+        /// Gets the current game score
+        /// </summary>
+        /// <returns>Score</returns>
+        public long CurrentScore()
+        {
+            return (long)JavaScript.ExecuteScript("return GameManager._instance.score");
+        }
+
+        /// <summary>
+        /// Restarts the game
+        /// </summary>
+        public void RestartGame()
+        {
+            JavaScript.ExecuteScript("GameManager._instance.restart()");
+        }
+
+        /// <summary>
+        /// Is the game over?
+        /// </summary>
+        /// <returns>Game terminated state</returns>
+        public bool IsGameOver()
+        {
+            return (bool)JavaScript.ExecuteScript("return GameManager._instance.isGameTerminated()");
+        }
+
+        /// <summary>
+        /// Controls whether or not to go past 2048
+        /// </summary>
+        /// <param name="keep">Continue past 2048?</param>
+        public void KeepPlaying(bool keep)
+        {
+            JavaScript.ExecuteScript(string.Format("GameManager._instance.keepPlaying = {0}", keep.ToString().ToLower()));
         }
 
         /// <summary>
